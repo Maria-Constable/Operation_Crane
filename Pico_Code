@@ -1,0 +1,126 @@
+#Pico Code
+import uasyncio as asyncio
+import machine
+from machine import Pin, PWM, ADC
+import struct
+import time
+import MQTT
+import network
+import ubinascii
+from Secrets import wifi  
+
+# Define pin numbers for motors
+dc_motor_pin = 10  # 11 for opposite direction
+dc_motor_pin2 = 11
+servo_motor_pin = 12
+Green_led_pin = 15
+Red_led_pin = 1
+
+# Initialize motors and LED
+dc_motor = PWM(Pin(dc_motor_pin), freq=1000, duty_u16=0) #counter clockwise
+dc_motor2 = PWM(Pin(dc_motor_pin2), freq=1000, duty_u16=0) #clockwise
+servo_motor = machine.PWM(Pin(servo_motor_pin), freq=500)
+green_led = Pin(Green_led_pin, mode=Pin.OUT)
+red_led = Pin(Red_led_pin, mode=Pin.OUT)
+
+# MQTT Code
+mqtt_broker = '' 
+mqtt_topic = ""
+mqtt_client = MQTT.MQTTClient("pico_client", mqtt_broker)
+
+def connect_wifi():
+    station = network.WLAN(network.STA_IF)
+    station.active(True)
+    station.connect(wifi['ssid'], wifi['pass'])
+    while not station.isconnected():
+        time.sleep(1)
+    print('Connection successful')
+    print(station.ifconfig())
+
+def rotate_crane():
+    dc_motor.duty_u16(65535) # // 2)
+    #time.sleep(10)
+    #dc_motor.duty_u16(0)
+
+def move_servo(duty_cycle):
+    servo_motor.duty_u16(int(65535 * duty_cycle / 100))
+    time.sleep(0.001)
+
+def move_servo_up(): #anti clockwise
+    for duty_cycle in range(10, 90, 5):
+        move_servo(duty_cycle)
+    time.sleep(1)
+    move_servo(0)
+
+def move_servo_down(): #clowckwise
+    for duty_cycle in range(90, 10, -5):
+        move_servo(duty_cycle)
+    time.sleep(4)
+    move_servo(0)
+
+
+def red_led_flash():
+    red_led.value(1)
+    time.sleep(0.5)
+    red_led.value(0)
+    time.sleep(0.5)
+
+
+def green_led_flash():
+    green_led.value(1)
+    time.sleep(0.5)
+    green_led.value(0)
+    time.sleep(0.5)
+
+
+def on_message(topic, msg):
+    msg = msg.decode('utf-8')
+    topic = topic.decode('utf-8')
+    print(f'Received: Topic: {topic}, Message: {msg}')  # Debugging
+
+    if msg == 'start':
+        rotate_crane()
+    if msg == 'stop':
+        dc_motor.duty_u16(0)
+        time.sleep(0.5)
+        move_servo_down()
+        move_servo_up()
+    elif msg == 'area_increasing':
+        green_led_flash()
+        dc_motor2.duty_u16(65535) # // 2)
+        time.sleep(2)
+    elif msg == 'area_not_increasing':
+        red_led_flash()
+        move_servo_down()
+        move_servo_up()
+
+        while True:
+            # Continue checking the condition for area increase
+            mqtt_client.check_msg()
+            if msg == 'area_increasing':
+                print("Item picked up!")
+                green_led_flash()
+                dc_motor2.duty_u16(65535) # // 2)
+                time.sleep(5)
+                break  # Break out of the loop if the item is picked up
+            else:
+                # Redo the operation
+                red_led_flash()
+                move_servo_down()
+                move_servo_up()
+
+async def main():
+    connect_wifi()
+
+    # Connect to the MQTT broker
+    mqtt_client.set_callback(on_message)
+    mqtt_client.connect()
+    mqtt_client.subscribe(mqtt_topic)
+
+    while True:
+        mqtt_client.check_msg()
+        await asyncio.sleep(0.1)
+
+if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
