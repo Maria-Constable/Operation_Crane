@@ -19,7 +19,7 @@ mqtt_topic = ""
 mqtt_client = mqtt.Client("")
 mqtt_client.connect(mqtt_server)
 
-
+#connect to wifi
 def connect_wifi(wifi):
     station = network.WLAN(network.STA_IF)
     station.active(True)
@@ -32,7 +32,7 @@ def connect_wifi(wifi):
     print('Connection successful')
     print(station.ifconfig())
 
-
+#Detect the color grean
 def preprocess_frame(frame):
     # Convert the frame to HSV color space
     hsv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -98,6 +98,7 @@ def recognize_features(processed_frame):
 
 '''
 
+# Calculate the area of the green blob
 def recognize_features(processed_frame):
     # Find contours in the processed frame
     contours, _ = cv2.findContours(processed_frame, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -110,6 +111,7 @@ def recognize_features(processed_frame):
 
     return total_area
 
+#Calcultae the angle the camera is detecting the green bone
 def calculate_orientation(mask):
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -130,7 +132,7 @@ def calculate_orientation(mask):
 # Initialize variables for area calculation
 prev_area = 0
 item_picked_up = False
-mqtt_client.publish(mqtt_topic, "start")
+mqtt_client.publish(mqtt_topic, "start") #Start the crane
 
 while True:
     ret, frame = vid.read()
@@ -150,11 +152,11 @@ while True:
 
         # Check if the color is detected at approximately 45 degrees (y direction). Change if necessary.
         if 40 < orientation < 55:
-            print("Color detected at ~180 degrees.")
+            print("Color detected at ~45 degrees.")
             item_detected = True
             mqtt_client.publish(mqtt_topic, "stop")  # Send MQTT message to stop
 
-            # Introduce a delay of 15 seconds
+            # Introduce a delay of 15 seconds to give time before the next operation starts
             #time.sleep(15)
 
             # Detect if the item is picked up by the crane
